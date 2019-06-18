@@ -1,5 +1,9 @@
 import { Component, OnInit } from '@angular/core';
 import { FormControl, FormGroup } from '@angular/forms';
+import { HttpClient } from '@angular/common/http';
+import { Observable, throwError } from 'rxjs';
+import { retry, catchError } from 'rxjs/operators';
+import {map} from 'rxjs/operators';
 
 @Component({
   selector: 'app-root',
@@ -9,9 +13,16 @@ import { FormControl, FormGroup } from '@angular/forms';
 
 export class AppComponent implements OnInit {
 
+  constructor(private  httpClient: HttpClient ) {}
+
+  roomObservable: Observable<Room[]>;
+
+  private baseUrl = 'http://localhost:8080';
   public submitted: boolean;
   roomsearch: FormGroup;
   rooms: Room[];
+  currCheckInVal: string;
+  currCheckOutVal: string;
 
     ngOnInit() {
         this.roomsearch = new FormGroup({
@@ -19,16 +30,52 @@ export class AppComponent implements OnInit {
             checkout: new FormControl('')
         });
 
-        this.rooms = ROOMS;
-    }
+        const roomSearchChange = this.roomsearch.valueChanges;
 
-    onSubmit({value, valid}: {value: Roomsearch, valid: boolean}) {
-      console.log(value);
+        roomSearchChange.subscribe(
+          valueChange => {
+            this.currCheckInVal = valueChange.checkin;
+            this.currCheckOutVal = valueChange.checkout;
+          }
+        );
     }
 
     reserveRoom(value: string) {
+      console.log('Room checkin for reservation:' + this.currCheckInVal);
+      this.createRoomReservation(new RoomRequest(value, this.currCheckInVal, this.currCheckOutVal));
       console.log('Room id for reservation:' + value);
     }
+
+    createRoomReservation(body: RoomRequest) {
+      const bodyString = JSON.stringify(body);
+      const options = {headers: {'Content-Type': 'application/json'}};
+      this.httpClient.post(this.baseUrl + '/room/reservation/v1', bodyString , options)
+      .subscribe(
+        data  => {
+          console.log('PATCH Request is successful ', data);
+        },
+        error  => {
+          console.log('Error', error);
+        });
+    }
+
+    onSubmit({value, valid}: {value: Roomsearch, valid: boolean}) {
+      this.getAll().subscribe(
+        (result: any) => { this.rooms = result.content; },
+        err => {
+          console.log(err);
+        }
+      );
+      console.log(value);
+    }
+
+    getAll(): Observable<Room[]> {
+      return this.httpClient.get<Room[]>(this.baseUrl
+        + '/room/reservation/v1?checkin=' + this.currCheckInVal
+        + '&checkout=' + this.currCheckOutVal );
+    }
+
+
 
 }
 
@@ -44,23 +91,14 @@ export interface Room {
   links: string;
 }
 
-const ROOMS: Room[] = [
-  {
-      id : '37489234327',
-      roomNumber : '406',
-      price: '25',
-      links: ''
-  },
-  {
-      id : '84329874798',
-      roomNumber: '407',
-      price: '20',
-      links: ''
-  },
-  {
-      id: '17238423787',
-      roomNumber: '408',
-      price: '22',
-      links: ''
+export class RoomRequest {
+  roomId: string;
+  checkin: string;
+  checkout: string;
+
+  constructor(roomId: string, checkin: string, checkout: string) {
+    this.roomId = roomId;
+    this.checkin = checkin;
+    this.checkout = checkout;
   }
-];
+}
